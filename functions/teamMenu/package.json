@@ -1,0 +1,15 @@
+{
+	"name": "teamMenu",
+	"version": "1.0.0",
+	"description": "Team Menu of Example PBX",
+	"license": "MIT",
+	"author": {
+		"name": "Anders Wallin",
+		"email": "anders.wallin@danielwellington.com"
+	},
+	"dependencies": {
+		"jsvictorops": "git+ssh://git@github.com:dwtechnologies/jsvictorops.git#master",
+		"js46elks": "git+ssh://git@github.com:dwtechnologies/js46elks.git#master"
+	},
+	"main": "index.js"
+}

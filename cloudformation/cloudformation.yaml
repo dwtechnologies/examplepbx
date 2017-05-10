@@ -1,0 +1,273 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Description: "Example PBX Stack"
+
+# Input Parameters
+Parameters:
+  ApplicationName:
+    Type: "String"
+    Default: "examplepbx"
+    Description: "The name of the application"
+  ResourceContext:
+    Type: "String"
+    Default: "test"
+    AllowedValues:
+      - "test"
+      - "prod"
+    Description: "The resource context"
+  victorId:
+    Type: "String"
+    Default: "VICTORID"
+    Description: "ID for VictorOps API (KMS encrypted)"
+  victorKey:
+    Type: "String"
+    Default: "VICTORKEY"
+    Description: "KEY for VictorOps API (KMS encrypted)"
+  elkUser:
+    Type: "String"
+    Default: "ELKUSER"
+    Description: "Username for 46elks API (KMS encrypted)"
+  elkPass:
+    Type: "String"
+    Default: "ELKPASS"
+    Description: "Password for 46elks API (KMS encrypted)"
+  authKey:
+    Type: "String"
+    Default: "AUTHKEY"
+    Description: "Key parameter that 46elks on each request (KMS encrypted)"
+  outgoingCallerID:
+    Type: "String"
+    Default: "+123456789"
+    Description: "Outgoing CallerID for calling On Call users in international format"
+  menuFile:
+    Type: "String"
+    Default: "https://example.com/ivr/menu.mp3"
+    Description: "Url to the sound file for the main menu"
+
+Resources:
+  # Role
+  ExamplePbxRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: !Join [ "", [ !Ref "ApplicationName", "-role-", !Ref "ResourceContext" ] ]
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "apigateway.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+
+  # Policies for Role
+  ExamplePbxPolicies:
+    Type: "AWS::IAM::Policy"
+    DependsOn:
+      - "ExamplePbxRole"
+    Properties:
+      PolicyName: !Join [ "", [ !Ref "ApplicationName", "-policy-", !Ref "ResourceContext" ] ]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Action: "lambda:InvokeFunction"
+            Resource:
+              - !Join [ "", [ "arn:aws:lambda:", !Ref "AWS::Region", ":", !Ref "AWS::AccountId", ":function:", "mainMenuFunction" ] ]
+              - !Join [ "", [ "arn:aws:lambda:", !Ref "AWS::Region", ":", !Ref "AWS::AccountId", ":function:", "teamFunction" ] ]
+          - Effect: "Allow"
+            Resource: 
+              - "arn:aws:s3:::package-examplepbx"
+            Action: "s3:*"
+      Roles:
+        - !Ref "ExamplePbxRole"
+
+  # mainMenuFunction Lambda
+  mainMenuFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Code: "../functions/mainMenu/"
+      FunctionName: !Join [ "", [ !Ref "ApplicationName", "-mainMenu-", !Ref "ResourceContext" ] ]
+      Handler: "index.handler"
+      Description: !Join [ "", [ !Ref "ApplicationName", " Main Menu Microservice" ] ]
+      Environment:
+        Variables:
+          MENUFILE: !Ref "menuFile"
+          WAITFILE: !Ref "waitFile"
+          AUTHKEY: !Ref "authKey"
+          ZENDESK: !Ref "zendeskNumber"
+          ELKUSER: !Ref "elkUser"
+          ELKPASS: !Ref "elkPass"
+      Role: !GetAtt "ExamplePbxRole.Arn"
+      Runtime: "nodejs6.10"
+      MemorySize: 256
+      Timeout: 15
+
+  # Give API gateway API ID access to our lambda only.
+  APIGatewayMainPostInvokePermission:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - "mainMenuFunction"
+      - "ExampleApiGw"
+    Properties:
+      FunctionName: !Ref mainMenuFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Join [ "", [ "arn:aws:execute-api:", !Ref "AWS::Region", ":", !Ref "AWS::AccountId", ":", !Ref "ExampleApiGw", "/*/POST/*" ] ]
+
+  # teamFunction Lambda
+  teamFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Code: "../functions/teamMenu/"
+      FunctionName: !Join [ "", [ !Ref "ApplicationName", "-teamMenu-", !Ref "ResourceContext" ] ]
+      Handler: "index.handler"
+      Description: !Join [ "", [ !Ref "ApplicationName", " Tean Menu Microservice" ] ]
+      Environment:
+        Variables:
+          AUTHKEY: !Ref "authKey"
+          CALLERID: !Ref "outgoingCallerID"
+          VICTORID: !Ref "victorId"
+          VICTORKEY: !Ref "victorKey"
+          ELKUSER: !Ref "elkUser"
+          ELKPASS: !Ref "elkPass"
+      Description: "Example Team Menu Microservice"
+      Role: !GetAtt "ExamplePbxRole.Arn"
+      Runtime: "nodejs6.10"
+      MemorySize: 256
+      Timeout: 15
+
+  # Give API gateway API ID access to our lambda only.
+  APIGatewayTeamPostInvokePermission:
+    Type: "AWS::Lambda::Permission"
+    DependsOn:
+      - "teamFunction"
+      - "ExampleApiGw"
+    Properties:
+      FunctionName: !Ref "teamFunction"
+      Action: "lambda:InvokeFunction"
+      Principal: "apigateway.amazonaws.com"
+      SourceArn: !Join [ "", [ "arn:aws:execute-api:", !Ref "AWS::Region", ":", !Ref "AWS::AccountId", ":", !Ref "ExampleApiGw", "/*/POST/*" ] ]
+  
+  # API Gateway
+  ExampleApiGw:
+    Type: "AWS::ApiGateway::RestApi"
+    Properties:
+      Name: !Join [ "", [ !Ref "ApplicationName", "-", !Ref "ResourceContext" ] ]
+      Description: !Join [ "", [ !Ref "ApplicationName", " ", !Ref "ResourceContext", " API" ] ]
+
+  # API Deployment
+  ExampleApiDeployment:
+    Type: "AWS::ApiGateway::Deployment"
+    DependsOn:
+      - "ApiGwTeamPostMethod"
+    Properties:
+      RestApiId: !Ref "ExampleApiGw"
+      StageName: !Ref "ResourceContext"
+
+  # POST /
+  ApiGwMainMenuPostMethod:
+    Type: "AWS::ApiGateway::Method"
+    DependsOn:
+      - "ExampleApiGw"
+    Properties:
+      AuthorizationType: "NONE"
+      HttpMethod: "POST"
+      Integration:
+        Type: "AWS_PROXY"
+        IntegrationHttpMethod: "POST"
+        Uri: !Join [ "", [ "arn:aws:apigateway:", !Ref "AWS::Region", ":lambda:path/2015-03-31/functions/", !GetAtt "mainMenuFunction.Arn", "/invocations" ] ]
+      ResourceId: !GetAtt "ExampleApiGw.RootResourceId"
+      RestApiId: !Ref "ExampleApiGw"
+
+  # Resource /{team}
+  ApiGwTeamResource:
+    Type: "AWS::ApiGateway::Resource"
+    DependsOn:
+      - "ExampleApiGw"
+    Properties:
+      RestApiId: !Ref "ExampleApiGw"
+      ParentId: !GetAtt "ExampleApiGw.RootResourceId"
+      PathPart: "{team}"
+
+  # POST /{team}
+  ApiGwTeamPostMethod:
+    Type: "AWS::ApiGateway::Method"
+    DependsOn:
+      - "ApiGwTeamResource"
+    Properties:
+      AuthorizationType: "NONE"
+      HttpMethod: "POST"
+      Integration:
+        Type: "AWS_PROXY"
+        IntegrationHttpMethod: "POST"
+        Uri: !Join [ "", [ "arn:aws:apigateway:", !Ref "AWS::Region", ":lambda:path/2015-03-31/functions/", !GetAtt "teamFunction.Arn", "/invocations" ] ]
+      ResourceId: !Ref "ApiGwTeamResource"
+      RestApiId: !Ref "ExampleApiGw"
+
+# KMS Key
+  exampleKey:
+    Type: "AWS::KMS::Key"
+    DependsOn:
+      - "ExamplePbxRole"
+    Properties:
+      Description: "KMS Key for Example PBX"
+      KeyPolicy:
+        Version: "2012-10-17"
+        Id: !Join [ "", [ !Ref "ApplicationName", "-key-", !Ref "ResourceContext" ] ]
+        Statement:
+          - Sid: "Allow administration of the key"
+            Effect: "Allow"
+            Principal:
+              AWS:
+                - !Join [ "", [ "arn:aws:iam::", !Ref AWS::AccountId, ":user/user1" ] ]
+                - !Join [ "", [ "arn:aws:iam::", !Ref AWS::AccountId, ":user/user2" ] ]
+            Action:
+              - "kms:Create*"
+              - "kms:Describe*"
+              - "kms:Enable*"
+              - "kms:List*"
+              - "kms:Put*"
+              - "kms:Update*"
+              - "kms:Revoke*"
+              - "kms:Disable*"
+              - "kms:Get*"
+              - "kms:Delete*"
+              - "kms:ScheduleKeyDeletion"
+              - "kms:CancelKeyDeletion"
+            Resource: "*"
+          - Sid: "Allow use of the key"
+            Effect: "Allow"
+            Principal:
+              AWS:
+                - !Join [ "", [ "arn:aws:iam::", !Ref AWS::AccountId, ":user/user1" ] ]
+                - !Join [ "", [ "arn:aws:iam::", !Ref AWS::AccountId, ":user/user2" ] ]
+                - !GetAtt "ExamplePbxRole.Arn"
+            Action:
+              - "kms:Encrypt"
+              - "kms:Decrypt"
+              - "kms:ReEncrypt*"
+              - "kms:GenerateDataKey*"
+              - "kms:DescribeKey"
+            Resource: "*"
+
+  # KMS Alias
+  exampleKeyAlias:
+    Type: "AWS::KMS::Alias"
+    DependsOn:
+      - "exampleKey"
+    Properties:
+      AliasName: !Join [ "", [ "alias/", !Ref "ApplicationName", "-key-", !Ref "ResourceContext" ] ]
+      TargetKeyId: !Ref "exampleKey"
+
+# Outputs
+Outputs:
+  ApiUrl:
+    Value: !Join [ "", [ "https://", !Ref "ExampleApiGw", ".execute-api.", !Ref "AWS::Region", ".amazonaws.com/", !Ref ResourceContext ] ]

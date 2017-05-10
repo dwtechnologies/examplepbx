@@ -1,0 +1,11 @@
+{
+	"name": "examplepbx",
+	"version": "1.0.0",
+	"description": "Example PBX for Routing calls based on VictorOps OnCall",
+	"license": "MIT",
+	"repository": "github:dwtechnologies/examplepbx",
+	"author": {
+		"name": "Anders Wallin",
+		"email": "anders.wallin@danielwellington.com"
+	}
+}
