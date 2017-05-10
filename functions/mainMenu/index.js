@@ -37,9 +37,9 @@ exports.handler = function (event, context, callback) {
 		menuFile = process.env.MENUFILE
 
 		try {
-			let retail = new elks.connect(zendesk)
 			let teamUrl = "https://" + event.headers.Host + "/" + event.requestContext.stage + "/{team}?key=" + decrypted.allowedKey
 
+			// Create the IVR.
 			let ivr = new elks.ivr(menuFile)
 
 			for (let i in teams) {
