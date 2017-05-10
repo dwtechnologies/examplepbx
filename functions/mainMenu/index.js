@@ -11,7 +11,7 @@ let menuFile
 const teams = {
 	1: "team-1",
 	2: "team-2",
-	4: "team-3"
+	3: "team-3"
 }
 
 exports.handler = function (event, context, callback) {
