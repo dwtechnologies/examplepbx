@@ -61,7 +61,7 @@ function getOnCallNumbers(team, callback) {
 
 		let user = sched.getCurrentOnCallUsername()
 		if (user instanceof Error) {
-			callback(err, { statusCode: 503 })
+			callback(user, { statusCode: 503 })
 			return
 		}
 

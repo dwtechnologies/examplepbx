@@ -10,11 +10,8 @@ PROD_S3PREFIX=S3_PREFIX
 .PHONY: build-prod
 build-prod:
 	@echo "Bulding PBX for Prod, Started ..."
-	cd functions/mainMenu
-	npm install
-	cd ../teamMenu
-	npm install
-	cd ../..
+	cd functions/mainMenu && npm install
+	cd functions/teamMenu && npm install
 	aws cloudformation package \
 	--template-file cloudformation/cloudformation.yaml \
 	--output-template-file dist/cloudformation-prod.yaml \
@@ -57,11 +54,8 @@ TEST_S3PREFIX=S3_PREFIX
 .PHONY: build-test
 build-test:
 	@echo "Bulding PBX for Test, Started ..."
-	cd functions/mainMenu
-	npm install
-	cd ../teamMenu
-	npm install
-	cd ../..
+	cd functions/mainMenu && npm install
+	cd functions/teamMenu && npm install
 	aws cloudformation package \
 	--template-file cloudformation/cloudformation.yaml \
 	--output-template-file dist/cloudformation-test.yaml \
